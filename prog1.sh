@@ -5,27 +5,29 @@ move_files() {
     local src="$1"
     local dest="$2"
 
-    # Create destination directory if it doesn't exist (including subdirectories)
-    mkdir -p "$dest"
+    while IFS= read -r file; do
+        local sub_dir=$(dirname "${file#$src/}")
+        local dest_sub_dir="$dest/$sub_dir"
+        mkdir -p "$dest_sub_dir"
+        mv "$file" "$dest_sub_dir/"
+    done < <(find "$src" -name "*.c")
+}
 
-    # Find all C files in the source directory
-    local files=($(find "$src" -name "*.c"))
+# Function to confirm moving files if more than 3 C files in a directory
+confirm_move() {
+    local dir="$1"
+    local count=$(find "$dir" -maxdepth 1 -name "*.c" | wc -l)
 
-    # If more than 3 C files are found, ask for confirmation
-    if [ "${#files[@]}" -gt 3 ]; then
-        echo "Moving the following files from $src:"
-        printf "%s\n" "${files[@]}"
+    if [ "$count" -gt 3 ]; then
+        echo "More than 3 C files found in $dir"
+        find "$dir" -maxdepth 1 -name "*.c"
         read -p "Confirm move? (y/n): " confirm
 
         if [[ $confirm != [yY] ]]; then
-            return
+            return 1
         fi
     fi
-
-    # Move files
-    for file in "${files[@]}"; do
-        mv "$file" "$dest/"
-    done
+    return 0
 }
 
 # Check for correct number of arguments
@@ -37,11 +39,22 @@ fi
 src_dir="$1"
 dest_dir="$2"
 
-# Check if source directory exists
 if [ ! -d "$src_dir" ]; then
     echo "$src_dir not found"
     exit 0
 fi
 
-# Move files from source to destination directory
-move_files "$src_dir" "$dest_dir"
+# Initialize an empty array
+dirs=()
+
+# Use a while loop to read the output of find into the array
+while IFS= read -r dir; do
+    dirs+=("$dir")
+done < <(find "$src_dir" -type d)
+
+# Iterate over the directories and process them
+for dir in "${dirs[@]}"; do
+    if confirm_move "$dir"; then
+        move_files "$dir" "$dest_dir"
+    fi
+done
